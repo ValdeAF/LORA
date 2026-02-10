@@ -27,8 +27,13 @@ static void lora_reset(void) {
 
 static void lora_rx_callback(void *ctx, uint8_t *data, uint16_t length) {
     (void)ctx;
-    ESP_LOGI(TAG, "RX %u bytes", (unsigned)length);
-    ESP_LOG_BUFFER_HEX(TAG, data, length);
+    char text[256];
+    size_t copy_len = length < (sizeof(text) - 1) ? length : (sizeof(text) - 1);
+
+    memcpy(text, data, copy_len);
+    text[copy_len] = '\0';
+
+    ESP_LOGI(TAG, "RX %u bytes: %s", (unsigned)length, text);
 }
 
 static void lora_tx_callback(void *ctx) {
@@ -59,7 +64,7 @@ static void lora_send_loop(sx127x *device) {
 
     while (1) {
         ESP_ERROR_CHECK(sx127x_lora_tx_set_for_transmission((const uint8_t *)message,
-                                                            (uint8_t)strlen(message),
+                                                            (uint8_t)(strlen(message) + 1),
                                                             device));
         ESP_ERROR_CHECK(sx127x_set_opmod(SX127X_MODE_TX, SX127X_MODULATION_LORA, device));
 
@@ -114,11 +119,21 @@ void app_main(void) {
     sx127x_set_frequency(868000000, &device);
     sx127x_lora_set_bandwidth(SX127X_BW_125000, &device);
     sx127x_lora_set_spreading_factor(SX127X_SF_7, &device);
+    sx127x_lora_set_syncword(0x12, &device);
+    sx127x_set_preamble_length(8, &device);
+    sx127x_lora_set_implicit_header(NULL, &device);
+    sx127x_lora_reset_fifo(&device);
     sx127x_set_opmod(SX127X_MODE_STANDBY, SX127X_MODULATION_LORA, &device); // Wake up
 
     ESP_LOGI(TAG, "SX127x initialized successfully!");
 
+    sx127x_tx_header_t header = {
+        .enable_crc = true,
+        .coding_rate = SX127X_CR_4_5
+    };
+    sx127x_lora_tx_set_explicit_header(&header, &device);
+
     // Pick one loop. Comment out the one you don't want.
     lora_receive_loop(&device);
-    // lora_send_loop(&device);
+    //lora_send_loop(&device);
 }
